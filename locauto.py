@@ -6,7 +6,7 @@ import base64
 import matplotlib.pyplot as plt
 from io import BytesIO
 from xhtml2pdf import pisa
-import re # Nova importação para expressões regulares (limpeza de texto)
+import re
 
 # --- Configurações da Página ---
 st.set_page_config(
@@ -22,38 +22,24 @@ ARQUIVO_FATURAS = "ultima_fatura.txt"
 ARQUIVO_TRANSACOES = "transacoes.csv"
 
 
-# --- NOVAS FUNÇÕES DE FORMATAÇÃO ---
-
-def formatar_cpf_cnpj(doc):
-    """Formata uma string de números como CPF ou CNPJ."""
-    doc = re.sub(r'\D', '', doc) # Remove tudo que não for dígito
-    if len(doc) == 11:
-        return f'{doc[:3]}.{doc[3:6]}.{doc[6:9]}-{doc[9:]}'
-    elif len(doc) == 14:
-        return f'{doc[:2]}.{doc[2:5]}.{doc[5:8]}/{doc[8:12]}-{doc[12:]}'
-    else:
-        return doc # Retorna o original se não for CPF ou CNPJ
-
-def formatar_telefone(tel):
-    """Formata uma string de números como telefone (com 10 ou 11 dígitos)."""
-    tel = re.sub(r'\D', '', tel) # Remove tudo que não for dígito
-    if len(tel) == 11:
-        return f'({tel[:2]}) {tel[2:7]}-{tel[7:]}'
-    elif len(tel) == 10:
-        return f'({tel[:2]}) {tel[2:6]}-{tel[6:]}'
-    else:
-        return tel # Retorna o original se não tiver 10 ou 11 dígitos
-
-# --- FUNÇÕES EXISTENTES (sem alterações) ---
-
+# --- FUNÇÃO DE CONVERSÃO PARA PDF (CORRIGIDA) ---
 def convert_html_to_pdf(html_string):
+    """Converte uma string HTML em um arquivo PDF em memória."""
     pdf_output = BytesIO()
-    pisa.CreatePDF(BytesIO(html_string.encode("UTF-8")), dest=pdf_output, encoding='UTF-8')
-    if not pisa.pisaDocument.err:
-        pdf_output.seek(0)
-        return pdf_output
-    return None
+    # 1. Captura o resultado da função de criação do PDF
+    pisa_status = pisa.CreatePDF(
+        BytesIO(html_string.encode("UTF-8")),
+        dest=pdf_output,
+        encoding='UTF-8'
+    )
+    # 2. Verifica o atributo .err no objeto retornado
+    if pisa_status.err:
+        st.error(f"Erro na conversão para PDF: {pisa_status.err}")
+        return None
+    pdf_output.seek(0)
+    return pdf_output
 
+# --- Funções de Manipulação de Dados ---
 def ler_ultimo_numero_fatura():
     try:
         with open(ARQUIVO_FATURAS, "r") as f: return int(f.read().strip())
@@ -71,91 +57,33 @@ def carregar_dados(nome_arquivo, colunas):
 
 def salvar_dados(df, nome_arquivo):
     df.to_csv(nome_arquivo, index=False)
+    
+def formatar_cpf_cnpj(doc):
+    doc = re.sub(r'\D', '', doc)
+    if len(doc) == 11: return f'{doc[:3]}.{doc[3:6]}.{doc[6:9]}-{doc[9:]}'
+    if len(doc) == 14: return f'{doc[:2]}.{doc[2:5]}.{doc[5:8]}/{doc[8:12]}-{doc[12:]}'
+    return doc
+
+def formatar_telefone(tel):
+    tel = re.sub(r'\D', '', tel)
+    if len(tel) == 11: return f'({tel[:2]}) {tel[2:7]}-{tel[7:]}'
+    if len(tel) == 10: return f'({tel[:2]}) {tel[2:6]}-{tel[6:]}'
+    return tel
 
 colunas_clientes = ["Nome", "CPF/CNPJ", "Endereço", "Município", "UF", "CEP", "Telefone", "Email"]
 colunas_veiculos = ["Placa", "Marca", "Modelo", "Ano", "Cor"]
 colunas_transacoes = ["Placa", "Data", "Tipo", "Valor", "Categoria", "Descricao"]
 
-
 # --- Páginas da Aplicação ---
 
 def pagina_gerar_recibo():
-    # Esta função não foi alterada
-    st.header("Emitir Nova Fatura de Locação", divider='blue')
-    # ... (código completo no final)
-
-def pagina_gestao_frotas():
-    # Esta função não foi alterada
-    st.header("📈 Gestão de Frotas e Financeiro", divider='rainbow')
-    # ... (código completo no final)
-
-def pagina_cadastrar_cliente():
-    st.header("Cadastro de Novos Clientes", divider='green')
-    with st.form("form_cliente", clear_on_submit=True):
-        st.info("Digite apenas os números do CPF/CNPJ e Telefone. A formatação será automática.")
-        nome = st.text_input("Nome Completo *")
-        cpf_cnpj = st.text_input("CPF ou CNPJ")
-        endereco = st.text_input("Endereço (Rua, Número, Bairro)")
-        col_mun, col_uf, col_cep = st.columns(3)
-        with col_mun: municipio = st.text_input("Município")
-        with col_uf: uf = st.text_input("UF", max_chars=2)
-        with col_cep: cep = st.text_input("CEP")
-        telefone = st.text_input("Telefone")
-        email = st.text_input("Email")
-        
-        submitted = st.form_submit_button("Cadastrar Cliente")
-        if submitted:
-            if not nome:
-                st.error("O campo 'Nome Completo' é obrigatório.")
-            else:
-                # --- APLICA A FORMATAÇÃO ANTES DE SALVAR ---
-                cpf_cnpj_formatado = formatar_cpf_cnpj(cpf_cnpj)
-                telefone_formatado = formatar_telefone(telefone)
-                
-                df_clientes_atual = carregar_dados(ARQUIVO_CLIENTES, colunas_clientes)
-                novo_cliente = pd.DataFrame(
-                    [[nome, cpf_cnpj_formatado, endereco, municipio, uf.upper(), cep, telefone_formatado, email]], 
-                    columns=colunas_clientes
-                )
-                df_atualizado = pd.concat([df_clientes_atual, novo_cliente], ignore_index=True)
-                salvar_dados(df_atualizado, ARQUIVO_CLIENTES)
-                st.success(f"✅ Cliente '{nome}' cadastrado com sucesso!")
-
-    st.subheader("Clientes Cadastrados")
-    df_clientes_atual = carregar_dados(ARQUIVO_CLIENTES, colunas_clientes)
-    st.dataframe(df_clientes_atual, use_container_width=True)
-
-    st.divider()
-    st.subheader("🗑️ Excluir Cliente")
-    if not df_clientes_atual.empty:
-        cliente_para_excluir = st.selectbox("Selecione o cliente que deseja excluir", options=df_clientes_atual['Nome'], index=None, placeholder="Escolha um cliente...")
-        if cliente_para_excluir:
-            st.warning(f"**Atenção:** Tem certeza que deseja excluir o cliente **{cliente_para_excluir}**? Esta ação não pode ser desfeita.")
-            if st.button("Confirmar Exclusão Definitiva do Cliente", type="primary"):
-                df_filtrado = df_clientes_atual[df_clientes_atual['Nome'] != cliente_para_excluir]
-                salvar_dados(df_filtrado, ARQUIVO_CLIENTES)
-                st.success(f"Cliente '{cliente_para_excluir}' excluído com sucesso!")
-                st.rerun()
-    else:
-        st.info("Nenhum cliente cadastrado para excluir.")
-
-def pagina_cadastrar_veiculo():
-    # Esta função não foi alterada
-    st.header("Cadastro de Novos Veículos", divider='orange')
-    # ... (código completo no final)
-
-# --- NAVEGAÇÃO E CÓDIGO COMPLETO DAS FUNÇÕES ---
-# (O restante do código é colado aqui para garantir que esteja 100% completo e funcional)
-# ...
-
-# --- CÓDIGO COMPLETO DAS FUNÇÕES ---
-def pagina_gerar_recibo_completa():
     st.header("Emitir Nova Fatura de Locação", divider='blue')
     df_clientes_atual = carregar_dados(ARQUIVO_CLIENTES, colunas_clientes)
     df_veiculos_atual = carregar_dados(ARQUIVO_VEICULOS, colunas_veiculos)
     if df_clientes_atual.empty or df_veiculos_atual.empty:
         st.warning("⚠️ É necessário cadastrar pelo menos um cliente e um veículo.")
         return
+
     st.subheader("Informações da Fatura")
     ultimo_numero = ler_ultimo_numero_fatura()
     proximo_num_sugerido = ultimo_numero + 1
@@ -166,6 +94,7 @@ def pagina_gerar_recibo_completa():
         data_emissao = st.date_input("Data da Emissão", datetime.today())
     with col_vencimento:
         data_vencimento = st.date_input("Data de Vencimento", datetime.today())
+    
     st.subheader("Cliente e Veículo")
     col_cli, col_vei = st.columns(2)
     with col_cli:
@@ -175,11 +104,14 @@ def pagina_gerar_recibo_completa():
         mapa_veiculos = {row['Placa']: f"{row['Placa']} ({row['Marca']} {row['Modelo']})" for index, row in df_veiculos_atual.iterrows()}
         opcoes_placas = list(mapa_veiculos.keys())
         placa_selecionada = st.selectbox("Selecione o Veículo", options=opcoes_placas, index=None, placeholder="Escolha um veículo...", format_func=lambda placa: mapa_veiculos.get(placa, "Veículo inválido"))
+    
     if not cliente_selecionado_nome or not placa_selecionada:
         st.info("Por favor, selecione um cliente e um veículo para continuar.")
         return
+
     cliente_selecionado = df_clientes_atual[df_clientes_atual['Nome'] == cliente_selecionado_nome].iloc[0]
     veiculo_selecionado = df_veiculos_atual[df_veiculos_atual['Placa'] == placa_selecionada].iloc[0]
+
     st.subheader("Detalhes da Locação")
     col_periodo1, col_periodo2, col_contrato = st.columns(3)
     with col_periodo1: data_inicio_periodo = st.date_input("Início do Período da Locação", datetime.today())
@@ -189,6 +121,7 @@ def pagina_gerar_recibo_completa():
     col_valor_str, col_valor_extenso = st.columns(2)
     with col_valor_str: valor_locacao_str = st.text_input("Valor Total da Fatura (R$)", "2.400,00")
     with col_valor_extenso: valor_por_extenso = st.text_input("Valor por Extenso", "Dois mil e quatrocentos reais")
+
     if st.button("Gerar Fatura", type="primary"):
         try:
             num_fatura = num_fatura_usado
@@ -202,11 +135,10 @@ def pagina_gerar_recibo_completa():
                     logo_html_tag = f'<img src="data:image/png;base64,{logo_base64}" class="logo">'
             except FileNotFoundError:
                 logo_html_tag = ""
+            
             html_recibo = f"""
             <!DOCTYPE html><html lang="pt-BR"><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta charset="UTF-8"><title>Fatura de Locação N° {num_fatura}</title>
-            <style>
-                body {{ font-family: Arial, sans-serif; font-size: 12px; color: #000; background-color: #fff; }} .container {{ max-width: 800px; margin: auto; border: 1px solid #000; padding: 40px; background-color: #fff; }} .header {{ display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #000; padding-bottom: 10px;}} .logo-empresa-container {{ flex: 2; display: flex; align-items: center; }} .logo {{ max-height: 70px; width: auto; margin-right: 15px; }} .empresa-info p {{ margin: 3px 0; }} .fatura-box {{ flex: 1; border: 1px solid #000; padding: 5px; text-align: center; }} .fatura-box h2 {{ margin: 0; font-size: 14px; }} .fatura-box p {{ margin: 2px 0; }} .sacado-box {{ border: 1px solid #000; padding: 10px; margin-top: 10px; }} .sacado-box p {{ margin: 3px 0; }} .vencimento-box {{ border: 1px solid #000; padding: 5px; margin-top: 10px; display: flex; justify-content: space-between; }} .vencimento-box div {{ width: 50%; }} .extenso-box {{ border: 1px solid #000; padding: 5px; margin-top: 10px; }} .descricao-table {{ width: 100%; border-collapse: collapse; margin-top: 10px; }} .descricao-table th, .descricao-table td {{ border: 1px solid #000; padding: 5px; }} .descricao-table th {{ text-align: center; }} .descricao-table .valor-col {{ text-align: right; width: 120px; }} .descricao-table .total-label {{ text-align: right; font-weight: bold; border-left: none; border-bottom: none;}} .footer {{ text-align: center; margin-top: 15px; font-size: 10px; }} strong {{ font-weight: bold; }} @media print {{ @page {{ size: A4; margin: 20mm; }} body {{ margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }} .container {{ border: none; box-shadow: none; width: 100%; max-width: 100%; margin: 0; padding: 0; }} }}
-            </style></head>
+            <style> body {{ font-family: Arial, sans-serif; font-size: 12px; color: #000; }} .container {{ max-width: 800px; margin: auto; padding: 40px; }} .header {{ display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #000; padding-bottom: 10px;}} .logo-empresa-container {{ flex: 2; display: flex; align-items: center; }} .logo {{ max-height: 70px; width: auto; margin-right: 15px; }} .empresa-info p {{ margin: 3px 0; }} .fatura-box {{ flex: 1; border: 1px solid #000; padding: 5px; text-align: center; }} .fatura-box h2 {{ margin: 0; font-size: 14px; }} .fatura-box p {{ margin: 2px 0; }} .sacado-box {{ border: 1px solid #000; padding: 10px; margin-top: 10px; }} .sacado-box p {{ margin: 3px 0; }} .vencimento-box {{ border: 1px solid #000; padding: 5px; margin-top: 10px; display: flex; justify-content: space-between; }} .vencimento-box div {{ width: 50%; }} .extenso-box {{ border: 1px solid #000; padding: 5px; margin-top: 10px; }} .descricao-table {{ width: 100%; border-collapse: collapse; margin-top: 10px; }} .descricao-table th, .descricao-table td {{ border: 1px solid #000; padding: 5px; }} .descricao-table th {{ text-align: center; }} .descricao-table .valor-col {{ text-align: right; width: 120px; }} .descricao-table .total-label {{ text-align: right; font-weight: bold; border-left: none; border-bottom: none;}} .footer {{ text-align: center; margin-top: 15px; font-size: 10px; }} strong {{ font-weight: bold; }} @media print {{ @page {{ size: A4; margin: 20mm; }} body {{ margin: 0; padding: 0; }} .container {{ border: none; box-shadow: none; width: 100%; max-width: 100%; margin: 0; padding: 0; }} }}</style></head>
             <body><div class="container">
                 <div class="header"><div class="logo-empresa-container">{logo_html_tag}<div class="empresa-info"><strong>HT Locações Auto LTDA</strong><p>Rua dos Contabilistas, 184 - PASSOS/MG CEP 37900-114</p><p>CNPJ: 05.261.064/0001-60</p><p>FONE: (35)999817121</p></div></div><div class="fatura-box"><h2>FATURA DE LOCAÇÃO</h2><p><strong>N°:</strong> {num_fatura}</p><p><strong>Data da Emissão:</strong> {data_emissao.strftime('%d/%m/%Y')}</p></div></div>
                 <div class="sacado-box"><p><strong>Sacado:</strong> {cliente_selecionado['Nome']}</p><p><strong>Endereço:</strong> {cliente_selecionado['Endereço']}</p><p><strong>Município:</strong> {cliente_selecionado['Município']} <strong>UF:</strong> {cliente_selecionado['UF']} <strong>CEP:</strong> {cliente_selecionado['CEP']}</p><p><strong>CNPJ(MF)/CPF:</strong> {cliente_selecionado['CPF/CNPJ']}</p></div>
@@ -218,13 +150,14 @@ def pagina_gerar_recibo_completa():
                 </tbody></table><div class="footer"><p>Atividade não sujeita ao ISSQN e à emissão de NF conforme Lei 116/03 - Item 3.01</p></div>
             </div></body></html>
             """
+            
             st.subheader("Pré-visualização da Fatura", divider='blue')
             st.components.v1.html(html_recibo, height=600, scrolling=True)
+
             pdf_file = convert_html_to_pdf(html_recibo)
             if pdf_file:
                 st.download_button(label="📄 Baixar Recibo (PDF)", data=pdf_file, file_name=f"fatura_{num_fatura}.pdf", mime="application/pdf")
-            else:
-                st.error("Ocorreu um erro ao gerar o PDF do recibo.")
+            
             valor_float = float(valor_locacao_str.replace('.', '').replace(',', '.'))
             nova_transacao = pd.DataFrame([{"Placa": placa_selecionada, "Data": data_emissao.strftime('%Y-%m-%d'), "Tipo": "Entrada", "Valor": valor_float, "Categoria": "Aluguel", "Descricao": f"Fatura Nº {num_fatura} - Cliente: {cliente_selecionado_nome}"}])
             df_transacoes_atual = carregar_dados(ARQUIVO_TRANSACOES, colunas_transacoes)
@@ -236,7 +169,7 @@ def pagina_gerar_recibo_completa():
         except Exception as e:
             st.error(f"Erro ao processar a fatura: {e}")
 
-def pagina_gestao_frotas_completa():
+def pagina_gestao_frotas():
     st.header("📈 Gestão de Frotas e Financeiro", divider='rainbow')
     df_veiculos_atual = carregar_dados(ARQUIVO_VEICULOS, colunas_veiculos)
     if df_veiculos_atual.empty:
@@ -268,21 +201,15 @@ def pagina_gestao_frotas_completa():
         if not despesas_por_cat.empty:
             fig1, ax1 = plt.subplots()
             ax1.pie(despesas_por_cat, labels=despesas_por_cat.index, autopct='%1.1f%%', startangle=90)
-            ax1.axis('equal')
-            st.pyplot(fig1)
-            plt.close(fig1)
-        else:
-            st.info("Nenhuma despesa registrada para este veículo.")
+            ax1.axis('equal'); st.pyplot(fig1); plt.close(fig1)
+        else: st.info("Nenhuma despesa registrada para este veículo.")
     with col_graf2:
         st.subheader("Receitas vs. Despesas")
         if total_receitas > 0 or total_despesas > 0:
             fig2, ax2 = plt.subplots()
             ax2.bar(['Receitas', 'Despesas'], [total_receitas, total_despesas], color=['#4CAF50', '#F44336'])
-            ax2.set_ylabel('Valor (R$)')
-            st.pyplot(fig2)
-            plt.close(fig2)
-        else:
-            st.info("Nenhuma receita ou despesa registrada.")
+            ax2.set_ylabel('Valor (R$)'); st.pyplot(fig2); plt.close(fig2)
+        else: st.info("Nenhuma receita ou despesa registrada.")
     st.divider()
     with st.expander("➕ Lançar Nova Transação"):
         with st.form("form_transacao", clear_on_submit=True):
@@ -297,8 +224,7 @@ def pagina_gestao_frotas_completa():
                 df_completo = carregar_dados(ARQUIVO_TRANSACOES, colunas_transacoes)
                 df_final = pd.concat([df_completo, nova_transacao], ignore_index=True)
                 salvar_dados(df_final, ARQUIVO_TRANSACOES)
-                st.success("Transação registrada!")
-                st.rerun()
+                st.success("Transação registrada!"); st.rerun()
     st.subheader("Histórico de Transações")
     st.dataframe(df_transacoes_veiculo.sort_values(by="Data", ascending=False), use_container_width=True)
     st.divider()
@@ -313,12 +239,48 @@ def pagina_gestao_frotas_completa():
                 df_completo = carregar_dados(ARQUIVO_TRANSACOES, colunas_transacoes)
                 df_completo = df_completo.drop(idx_excluir)
                 salvar_dados(df_completo, ARQUIVO_TRANSACOES)
-                st.success("Lançamento excluído.")
-                st.rerun()
-    else:
-        st.info("Nenhum lançamento para excluir.")
+                st.success("Lançamento excluído."); st.rerun()
+    else: st.info("Nenhum lançamento para excluir.")
 
-def pagina_cadastrar_veiculo_completa():
+def pagina_cadastrar_cliente():
+    st.header("Cadastro de Novos Clientes", divider='green')
+    with st.form("form_cliente", clear_on_submit=True):
+        st.info("Digite apenas os números do CPF/CNPJ e Telefone. A formatação será automática.")
+        nome = st.text_input("Nome Completo *")
+        cpf_cnpj = st.text_input("CPF ou CNPJ")
+        endereco = st.text_input("Endereço (Rua, Número, Bairro)")
+        col_mun, col_uf, col_cep = st.columns(3)
+        with col_mun: municipio = st.text_input("Município")
+        with col_uf: uf = st.text_input("UF", max_chars=2)
+        with col_cep: cep = st.text_input("CEP")
+        telefone = st.text_input("Telefone")
+        email = st.text_input("Email")
+        if st.form_submit_button("Cadastrar Cliente"):
+            if not nome: st.error("O campo 'Nome Completo' é obrigatório.")
+            else:
+                cpf_cnpj_formatado = formatar_cpf_cnpj(cpf_cnpj)
+                telefone_formatado = formatar_telefone(telefone)
+                df_clientes_atual = carregar_dados(ARQUIVO_CLIENTES, colunas_clientes)
+                novo_cliente = pd.DataFrame([[nome, cpf_cnpj_formatado, endereco, municipio, uf.upper(), cep, telefone_formatado, email]], columns=colunas_clientes)
+                df_atualizado = pd.concat([df_clientes_atual, novo_cliente], ignore_index=True)
+                salvar_dados(df_atualizado, ARQUIVO_CLIENTES)
+                st.success(f"✅ Cliente '{nome}' cadastrado com sucesso!")
+    st.subheader("Clientes Cadastrados")
+    df_clientes_atual = carregar_dados(ARQUIVO_CLIENTES, colunas_clientes)
+    st.dataframe(df_clientes_atual, use_container_width=True)
+    st.divider()
+    st.subheader("🗑️ Excluir Cliente")
+    if not df_clientes_atual.empty:
+        cliente_para_excluir = st.selectbox("Selecione o cliente que deseja excluir", options=df_clientes_atual['Nome'], index=None, placeholder="Escolha um cliente...")
+        if cliente_para_excluir:
+            st.warning(f"**Atenção:** Tem certeza que deseja excluir o cliente **{cliente_para_excluir}**? Esta ação não pode ser desfeita.")
+            if st.button("Confirmar Exclusão Definitiva do Cliente", type="primary"):
+                df_filtrado = df_clientes_atual[df_clientes_atual['Nome'] != cliente_para_excluir]
+                salvar_dados(df_filtrado, ARQUIVO_CLIENTES)
+                st.success(f"Cliente '{cliente_para_excluir}' excluído com sucesso!"); st.rerun()
+    else: st.info("Nenhum cliente cadastrado para excluir.")
+
+def pagina_cadastrar_veiculo():
     st.header("Cadastro de Novos Veículos", divider='orange')
     with st.form("form_veiculo", clear_on_submit=True):
         placa = st.text_input("Placa *")
@@ -353,17 +315,16 @@ def pagina_cadastrar_veiculo_completa():
                 df_t_atual = carregar_dados(ARQUIVO_TRANSACOES, colunas_transacoes)
                 df_t_filtrado = df_t_atual[df_t_atual['Placa'] != placa_excluir]
                 salvar_dados(df_t_filtrado, ARQUIVO_TRANSACOES)
-                st.success(f"Veículo '{veiculo_excluir_str}' e seus dados foram excluídos.")
-                st.rerun()
+                st.success(f"Veículo '{veiculo_excluir_str}' e seus dados foram excluídos."); st.rerun()
     else: st.info("Nenhum veículo para excluir.")
 
 # --- NAVEGAÇÃO PRINCIPAL ---
 st.sidebar.title("Navegação Principal")
 paginas = {
-    "Gerar Fatura": pagina_gerar_recibo_completa,
-    "Gestão de Frotas": pagina_gestao_frotas_completa,
+    "Gerar Fatura": pagina_gerar_recibo,
+    "Gestão de Frotas": pagina_gestao_frotas,
     "Cadastrar Cliente": pagina_cadastrar_cliente,
-    "Cadastrar Veículo": pagina_cadastrar_veiculo_completa
+    "Cadastrar Veículo": pagina_cadastrar_veiculo
 }
 captions = ["Emita recibos de locação", "Análise financeira por veículo", "Adicione ou veja clientes", "Adicione ou veja veículos"]
 pagina_selecionada = st.sidebar.radio("Escolha uma opção", paginas.keys(), captions=captions)
