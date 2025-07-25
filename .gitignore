@@ -1,0 +1,5 @@
+# Arquivos de dados que não devem ir para o GitHub
+clientes.csv
+veiculos.csv
+transacoes.csv
+ultima_fatura.txt
